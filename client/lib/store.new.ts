@@ -119,15 +119,7 @@ export const useCivitasStore = create<CivitasStore>()(
 
       login: async (credentials) => {
         try {
-          if (!credentials.email && !credentials.citizenId) {
-            throw new Error('Either email or citizen ID is required');
-          }
-
-          if (!credentials.password) {
-            throw new Error('Password is required');
-          }
-
-          let loginEmail = credentials.email;
+          let email = credentials.email;
 
           // If using citizen ID, get the email from profiles
           if (credentials.citizenId) {
@@ -140,16 +132,12 @@ export const useCivitasStore = create<CivitasStore>()(
             if (profileError || !profile) {
               throw new Error('Invalid Citizen ID');
             }
-            loginEmail = profile.email;
-          }
-
-          if (!loginEmail) {
-            throw new Error('Email is required for login');
+            email = profile.email;
           }
 
           // Sign in with Supabase
           const { data, error } = await supabase.auth.signInWithPassword({
-            email: loginEmail,
+            email: email!,
             password: credentials.password,
           });
 

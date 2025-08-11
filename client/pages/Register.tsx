@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,9 +9,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
-import { Shield, CheckCircle, User, Mail, MapPin, Eye, EyeOff } from "lucide-react";
+import { Shield, CheckCircle, User, Mail, MapPin, Eye, EyeOff, Copy } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 export default function Register() {
+  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -27,6 +30,15 @@ export default function Register() {
   const [generatedCitizenId, setGeneratedCitizenId] = useState("");
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const { register } = useCivitasStore();
+
+  useEffect(() => {
+    if (registrationComplete) {
+      const timer = setTimeout(() => {
+        navigate('/login');
+      }, 60000);
+      return () => clearTimeout(timer);
+    }
+  }, [registrationComplete, navigate]);
 
   const states = [
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh", "Delhi", "Goa", "Gujarat", 
@@ -44,27 +56,74 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
-      return;
-    }
-    
-    if (!formData.agreeToTerms || !formData.agreeToPrivacy) {
-      alert("Please agree to the terms and privacy policy");
-      return;
-    }
-
     setIsSubmitting(true);
 
     try {
-      const citizenId = await register(formData);
+      if (formData.password !== formData.confirmPassword) {
+        toast.error("Passwords do not match");
+        return;
+      }
+
+      if (!formData.agreeToTerms || !formData.agreeToPrivacy) {
+        toast.error("Please agree to the Terms of Service and Privacy Policy");
+        return;
+      }
+
+      // Generate citizen ID
+      const citizenId = generateCitizenId();
+
+      // Register with Supabase
+      const { data: { user }, error } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          emailRedirectTo: window.location.origin + '/login',
+          data: {
+            citizen_id: citizenId,
+            region: formData.region,
+            preferred_language: formData.preferredLanguage
+          }
+        }
+      });
+
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+
+      if (!user) {
+        toast.error("Registration failed. Please try again.");
+        return;
+      }
+
+      // Store additional user data in profiles table
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .insert([
+          {
+            id: user.id,
+            citizen_id: citizenId,
+            email: formData.email,
+            region: formData.region,
+            preferred_language: formData.preferredLanguage
+          }
+        ]);
+
+      if (profileError) {
+        toast.error("Error creating profile: " + profileError.message);
+        return;
+      }
+
       setGeneratedCitizenId(citizenId);
       setRegistrationComplete(true);
+      toast.success("Registration successful! Your Citizen ID has been generated.");
+
     } catch (error) {
-      alert("Registration failed. Please try again.");
+      toast.error("An unexpected error occurred. Please try again.");
+      console.error("Registration error:", error);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   if (registrationComplete) {
@@ -86,9 +145,25 @@ export default function Register() {
               <CardContent className="p-8">
                 <div className="text-center mb-8">
                   <h3 className="text-xl font-semibold text-gov-navy mb-4">Your Citizen ID</h3>
-                  <div className="bg-gov-navy text-white text-3xl font-bold py-4 px-6 rounded-lg mb-6 font-mono tracking-wider">
-                    {generatedCitizenId}
+                  <div className="relative">
+                    <div className="bg-gov-navy text-white text-3xl font-bold py-4 px-6 pr-14 rounded-lg mb-6 font-mono tracking-wider">
+                      {generatedCitizenId}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedCitizenId);
+                        toast.success('Citizen ID copied to clipboard!');
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                    >
+                      <Copy className="w-5 h-5" />
+                    </Button>
                   </div>
+                  <p className="text-gov-maroon font-semibold text-sm mt-4">
+                    This ID will be shown for 1 minute before redirecting to login
+                  </p>
                   <p className="text-gray-600 text-sm mb-6">
                     Please save this Citizen ID securely. You will need it to log in and participate in civic activities.
                   </p>
@@ -161,7 +236,7 @@ export default function Register() {
                 <div className="space-y-2">
                   <Label htmlFor="email" className="flex items-center gap-2">
                     <Mail className="w-4 h-4" />
-                    Email Address (Optional)
+                    Email Address
                   </Label>
                   <Input
                     id="email"
@@ -171,9 +246,7 @@ export default function Register() {
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="border-gray-300 focus:border-gov-navy"
                   />
-                  <p className="text-xs text-gray-500">
-                    Used only for password recovery. You can register without email for complete anonymity.
-                  </p>
+                  
                 </div>
 
                 {/* Password */}

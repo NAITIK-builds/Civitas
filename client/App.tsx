@@ -18,6 +18,7 @@ import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsOfService from "./pages/TermsOfService";
 import TaskSubmission from "./pages/TaskSubmission";
 import IdCard from "./pages/IdCard";
+import Settings from "./pages/Settings";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/terms" element={<TermsOfService />} />
           <Route path="/submit-task/:taskId" element={<TaskSubmission />} />
           <Route path="/id-card" element={<IdCard />} />
+          <Route path="/settings" element={<Settings />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

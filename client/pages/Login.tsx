@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
 import { Shield, LogIn, User, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { toast } from "sonner";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -29,42 +31,98 @@ export default function Login() {
     setLoginError("");
     setIsSubmitting(true);
 
-    // Basic validation
-    if (loginMethod === "citizen-id" && !formData.citizenId) {
-      setLoginError("Please enter your Citizen ID");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (loginMethod === "email" && !formData.email) {
-      setLoginError("Please enter your email address");
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.password) {
-      setLoginError("Please enter your password");
-      setIsSubmitting(false);
-      return;
-    }
-
-    // Use store login function
     try {
-      const success = await login({
-        citizenId: loginMethod === "citizen-id" ? formData.citizenId : undefined,
-        email: loginMethod === "email" ? formData.email : undefined,
+      let email = formData.email;
+
+      // If using citizen-id, we need to fetch the email first
+      if (loginMethod === "citizen-id") {
+        if (!formData.citizenId) {
+          setLoginError("Please enter your Citizen ID");
+          return;
+        }
+        
+        // Get email from profiles table using citizen_id
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('citizen_id', formData.citizenId)
+          .single();
+
+        if (profileError || !profileData) {
+          setLoginError("Invalid Citizen ID");
+          return;
+        }
+
+        email = profileData.email;
+      } else if (!formData.email) {
+        setLoginError("Please enter your email address");
+        return;
+      }
+
+      if (!formData.password) {
+        setLoginError("Please enter your password");
+        return;
+      }
+
+      if (!email) {
+        setLoginError("Email is required");
+        toast.error("Email is required");
+        return;
+      }
+
+      // Attempt to sign in with Supabase
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email,
         password: formData.password
       });
 
+      if (error) {
+        console.error("Login error:", error);
+        setLoginError(error.message);
+        toast.error(error.message);
+        return;
+      }
+
+      if (!data.user) {
+        setLoginError("Login failed");
+        toast.error("Login failed");
+        return;
+      }
+
+      // Get user profile data
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError || !profile) {
+        console.error("Error fetching profile:", profileError);
+        toast.error("Error fetching user profile");
+        return;
+      }
+
+      // Update local store with user data
+      const success = await login({
+        email: email,
+        password: formData.password,
+        citizenId: profile.citizen_id
+      });
+
       if (success) {
+        toast.success("Successfully logged in!");
         navigate("/dashboard");
       } else {
         setLoginError("Invalid credentials. Please check your Citizen ID/Email and password.");
+        toast.error("Login failed. Please check your credentials.");
       }
     } catch (error) {
-      setLoginError("Login failed. Please try again.");
+      console.error("Login error:", error);
+      setLoginError("An unexpected error occurred");
+      toast.error("An unexpected error occurred during login");
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
   return (
