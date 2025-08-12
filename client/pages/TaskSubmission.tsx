@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import Navigation from "@/components/Navigation";
+import PhotoCapture from "@/components/PhotoCapture";
 import { useCivitasStore, Task } from "@/lib/store";
 import {
   TreePine, Eye, AlertTriangle, Upload, Camera, MapPin, Clock,
@@ -34,6 +35,7 @@ export default function TaskSubmission() {
   });
   
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [verificationResults, setVerificationResults] = useState<any[]>([]);
 
   // Load task data from store
   useEffect(() => {
@@ -66,6 +68,11 @@ export default function TaskSubmission() {
       case "corruption_report": return "bg-gov-maroon";
       default: return "bg-gray-500";
     }
+  };
+
+  const handlePhotosVerified = (photos: File[], results: any[]) => {
+    setUploadedFiles(photos);
+    setVerificationResults(results);
   };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -353,45 +360,20 @@ export default function TaskSubmission() {
                     />
                   </div>
 
-                  {/* Photo Upload */}
+                  {/* Photo Capture and Verification */}
                   <div>
-                    <Label className="text-sm sm:text-base">Upload Photos * (Maximum 5 files)</Label>
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center">
-                      <Camera className="w-8 h-8 sm:w-12 sm:h-12 text-gray-400 mx-auto mb-2 sm:mb-4" />
-                      <p className="text-gray-600 mb-3 sm:mb-4 text-sm sm:text-base">Upload photos showing your completed task</p>
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/*"
-                        onChange={handleFileUpload}
-                        className="hidden"
-                        id="file-upload"
-                      />
-                      <Label htmlFor="file-upload">
-                        <Button type="button" variant="outline" className="cursor-pointer text-sm sm:text-base">
-                          Choose Files
-                        </Button>
-                      </Label>
-
-                      {uploadedFiles.length > 0 && (
-                        <div className="mt-3 sm:mt-4 grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
-                          {uploadedFiles.map((file, index) => (
-                            <div key={index} className="relative">
-                              <div className="aspect-square bg-gray-100 rounded-lg flex items-center justify-center p-2">
-                                <span className="text-xs text-center leading-tight">{file.name.substring(0, 10)}...</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => removeFile(index)}
-                                className="absolute -top-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-red-500 text-white rounded-full text-xs"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <Label className="text-sm sm:text-base">Photo Capture & Verification *</Label>
+                    <PhotoCapture
+                      onPhotosVerified={handlePhotosVerified}
+                      taskType={task.type}
+                      taskLocation={formData.coordinates}
+                      taskDeadline={{
+                        start: new Date(task.deadline).toISOString(),
+                        end: new Date(task.deadline).toISOString()
+                      }}
+                      userId={user.citizenId}
+                      maxPhotos={5}
+                    />
                   </div>
 
                   {/* Location */}
@@ -440,7 +422,13 @@ export default function TaskSubmission() {
                   <Button
                     type="submit"
                     className="w-full bg-gov-maroon hover:bg-gov-maroon/90 text-white py-3 text-base sm:text-lg font-semibold"
-                    disabled={uploadedFiles.length === 0 || !formData.description || !formData.location}
+                    disabled={
+                      uploadedFiles.length === 0 || 
+                      !formData.description || 
+                      !formData.location ||
+                      verificationResults.length === 0 ||
+                      !verificationResults.every(r => r.is_valid)
+                    }
                   >
                     Submit Task Report (+{task.points} points)
                   </Button>

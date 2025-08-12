@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { handleDemo } from "./routes/demo";
+import photoVerificationRoutes from "./routes/photoVerification";
 
 export function createServer() {
   const app = express();
@@ -19,5 +20,19 @@ export function createServer() {
 
   app.get("/api/demo", handleDemo);
 
+  // Photo verification routes
+  app.use("/api", photoVerificationRoutes);
+
   return app;
+}
+
+// Start server if this file is run directly
+if (process.argv[1] && process.argv[1].endsWith('index.ts')) {
+  const app = createServer();
+  const port = process.env.PORT || 3001;
+  
+  app.listen(port, () => {
+    console.log(`🚀 Server running on http://localhost:${port}`);
+    console.log(`📸 Photo verification service available at http://localhost:8000`);
+  });
 }

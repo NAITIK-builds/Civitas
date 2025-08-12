@@ -12,6 +12,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:server": "tsx watch server/index.ts",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "vite build --config vite.config.server.ts",
@@ -22,10 +23,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.54.0",
+    "axios": "^1.6.0",
     "dotenv": "^17.2.0",
     "express": "^4.18.2",
+    "form-data": "^4.0.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.1",
+    "multer": "^1.4.5-lts.1",
     "zod": "^3.23.8",
     "zustand": "^5.0.7"
   },
@@ -97,7 +101,7 @@
     "tailwindcss": "^3.4.11",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.176.0",
-    "tsx": "^4.7.0",
+    "tsx": "^4.20.3",
     "typescript": "^5.5.3",
     "vaul": "^0.9.3",
     "vite": "^6.2.2",
