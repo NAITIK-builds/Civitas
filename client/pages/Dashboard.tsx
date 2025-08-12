@@ -6,11 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Navigation from "@/components/Navigation";
+import MediaUpload from "@/components/MediaUpload";
 import { useCivitasStore, Task as StoreTask, Report } from "@/lib/store";
+import { supabase } from "@/lib/supabase";
 import {
   TreePine, AlertTriangle, Eye, Award, MapPin, Clock, CheckCircle,
-  Upload, Camera, Star, TrendingUp, Users, Target, User
+  Upload, Camera, Star, TrendingUp, Users, Target, User, Image as ImageIcon,
+  Video, Trash2
 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -23,6 +27,55 @@ export default function Dashboard() {
 
   const [availableTasks, setAvailableTasks] = useState<StoreTask[]>([]);
   const [recentReports, setRecentReports] = useState<Report[]>([]);
+  const [userMedia, setUserMedia] = useState<any[]>([]);
+  const [loadingMedia, setLoadingMedia] = useState(true);
+
+  // Fetch user's media
+  const fetchUserMedia = async () => {
+    if (!user?.citizenId) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_media')
+        .select('*')
+        .eq('user_id', user.citizenId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserMedia(data || []);
+    } catch (error: any) {
+      toast.error('Error loading media: ' + error.message);
+    } finally {
+      setLoadingMedia(false);
+    }
+  };
+
+  // Delete media
+  const handleDeleteMedia = async (mediaId: string, fileUrl: string) => {
+    if (!window.confirm('Are you sure you want to delete this media?')) return;
+
+    try {
+      // Delete from storage
+      const filePath = fileUrl.split('/').slice(-2).join('/'); // Get relative path
+      const { error: storageError } = await supabase.storage
+        .from('media')
+        .remove([filePath]);
+
+      if (storageError) throw storageError;
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('user_media')
+        .delete()
+        .eq('id', mediaId);
+
+      if (dbError) throw dbError;
+
+      toast.success('Media deleted successfully');
+      fetchUserMedia(); // Refresh media list
+    } catch (error: any) {
+      toast.error('Error deleting media: ' + error.message);
+    }
+  };
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -33,7 +86,10 @@ export default function Dashboard() {
     // Load user's tasks and reports
     setAvailableTasks(getUserTasks());
     setRecentReports(getUserReports());
-  }, [isAuthenticated, navigate, getUserTasks, getUserReports]);
+    
+    // Load user's media
+    fetchUserMedia();
+  }, [isAuthenticated, navigate, getUserTasks, getUserReports, user?.citizenId]);
 
   if (!isAuthenticated || !user) {
     return null;
@@ -99,6 +155,61 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Media Gallery */}
+          <div className="mb-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>My Media Gallery</span>
+                  <MediaUpload userId={user.citizenId} onUploadComplete={fetchUserMedia} />
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {loadingMedia ? (
+                    <p>Loading media...</p>
+                  ) : userMedia.length === 0 ? (
+                    <p>No media uploaded yet.</p>
+                  ) : (
+                    userMedia.map((media) => (
+                      <Card key={media.id} className="overflow-hidden">
+                        <div className="relative aspect-square">
+                          {media.file_type.startsWith('image/') ? (
+                            <img
+                              src={media.file_url}
+                              alt={media.title || 'Uploaded media'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : media.file_type.startsWith('video/') ? (
+                            <video
+                              src={media.file_url}
+                              controls
+                              className="w-full h-full object-cover"
+                            />
+                          ) : null}
+                          <Button
+                            variant="destructive"
+                            size="icon"
+                            className="absolute top-2 right-2"
+                            onClick={() => handleDeleteMedia(media.id, media.file_url)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <CardContent className="p-2">
+                          <p className="font-medium truncate">{media.title || 'Untitled'}</p>
+                          <p className="text-sm text-gray-500 truncate">
+                            {new Date(media.created_at).toLocaleDateString()}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Stats Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8">
             <Card className="bg-gradient-to-r from-gov-navy to-gov-navy/80 text-white">
@@ -151,9 +262,10 @@ export default function Dashboard() {
           </div>
 
           <Tabs defaultValue="tasks" className="space-y-4 sm:space-y-6">
-            <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsList className="grid w-full grid-cols-4 h-auto">
               <TabsTrigger value="tasks" className="text-xs sm:text-sm py-2 sm:py-3">Available Tasks</TabsTrigger>
               <TabsTrigger value="reports" className="text-xs sm:text-sm py-2 sm:py-3">My Reports</TabsTrigger>
+              <TabsTrigger value="media" className="text-xs sm:text-sm py-2 sm:py-3">Media Gallery</TabsTrigger>
               <TabsTrigger value="achievements" className="text-xs sm:text-sm py-2 sm:py-3">Achievements</TabsTrigger>
             </TabsList>
 
@@ -248,6 +360,92 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Media Gallery */}
+            <TabsContent value="media" className="space-y-6">
+              <MediaUpload 
+                userId={user.citizenId}
+                onUploadComplete={() => fetchUserMedia()}
+              />
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    My Media Gallery
+                  </CardTitle>
+                  <CardDescription>
+                    Your uploaded photos and videos
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loadingMedia ? (
+                    <div className="text-center py-8 text-gray-500">Loading media...</div>
+                  ) : userMedia.length === 0 ? (
+                    <div className="text-center py-8 text-gray-500">
+                      <Camera className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                      <p>No media uploads yet</p>
+                      <p className="text-sm">Share your first photo or video</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {userMedia.map((media) => (
+                        <Card key={media.id} className="overflow-hidden group">
+                          <div className="relative aspect-video">
+                            {media.file_type.startsWith('image/') ? (
+                              <img
+                                src={media.file_url}
+                                alt={media.title}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <video
+                                src={media.file_url}
+                                className="w-full h-full object-cover"
+                                controls
+                              />
+                            )}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleDeleteMedia(media.id, media.file_url)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Delete
+                              </Button>
+                            </div>
+                          </div>
+                          <CardContent className="p-3">
+                            <div className="flex justify-between items-start gap-2">
+                              <div>
+                                <h4 className="font-medium text-sm line-clamp-1">{media.title}</h4>
+                                <p className="text-xs text-gray-500">
+                                  {new Date(media.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <Badge>
+                                {media.file_type.startsWith('image/') ? (
+                                  <ImageIcon className="w-3 h-3" />
+                                ) : (
+                                  <Video className="w-3 h-3" />
+                                )}
+                              </Badge>
+                            </div>
+                            {media.description && (
+                              <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                                {media.description}
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

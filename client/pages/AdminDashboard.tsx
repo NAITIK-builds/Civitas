@@ -9,7 +9,18 @@ import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
-import { Shield, Users, Lock, AlertCircle, Plus, Activity, Check, UserPlus, Star } from "lucide-react";
+import { Shield, Users, Lock, AlertCircle, Plus, Activity, Check, UserPlus, Star, Camera, Image as ImageIcon, Video, Trash2 } from "lucide-react";
+
+interface UserMedia {
+  id: string;
+  user_id: string;
+  file_url: string;
+  file_type: string;
+  title: string;
+  description?: string;
+  created_at: string;
+  metadata?: Record<string, any>;
+}
 
 interface SupabaseUser {
   id: string;
@@ -20,6 +31,7 @@ interface SupabaseUser {
   isAdmin: boolean;  // Matching the store's User type
   created_at: string;
   last_sign_in: string | null;
+  media?: UserMedia[]; // Added media field
 }
 
 export default function AdminDashboard() {
@@ -40,6 +52,7 @@ export default function AdminDashboard() {
   const [allUsersData, setAllUsersData] = useState<SupabaseUser[]>([]);
   const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
+  const [userMediaData, setUserMediaData] = useState<any[]>([]);
 
   // Admin PIN Constants
   const ADMIN_PIN = "2024";
@@ -59,6 +72,78 @@ export default function AdminDashboard() {
   });
 
   // Fetch all users from Supabase
+  // Fetch all media with user information
+  const fetchAllMedia = async () => {
+    if (!pinAuthenticated) return;
+    try {
+      const { data, error } = await supabase
+        .from('user_media')
+        .select(`
+          *,
+          profiles:user_id (
+            citizen_id,
+            email
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setUserMediaData(data || []);
+    } catch (error: any) {
+      toast.error('Error fetching media: ' + error.message);
+    }
+  };
+
+  // Function to render media content
+  const renderMediaContent = (media: any) => {
+    if (media.file_type.startsWith('image/')) {
+      return (
+        <img
+          src={media.file_url}
+          alt={media.title || 'User media'}
+          className="w-full h-full object-cover"
+        />
+      );
+    } else if (media.file_type.startsWith('video/')) {
+      return (
+        <video
+          src={media.file_url}
+          controls
+          className="w-full h-full object-cover"
+        />
+      );
+    }
+    return null;
+  };
+
+  // Handle media deletion
+  const handleDeleteMedia = async (mediaId: string, fileUrl: string) => {
+    if (!window.confirm('Are you sure you want to delete this media?')) return;
+
+    try {
+      // Delete from storage
+      const filePath = fileUrl.split('/').slice(-2).join('/'); // Get relative path
+      const { error: storageError } = await supabase.storage
+        .from('media')
+        .remove([filePath]);
+
+      if (storageError) throw storageError;
+
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('user_media')
+        .delete()
+        .eq('id', mediaId);
+
+      if (dbError) throw dbError;
+
+      toast.success('Media deleted successfully');
+      fetchAllMedia(); // Refresh media list
+    } catch (error: any) {
+      toast.error('Error deleting media: ' + error.message);
+    }
+  };
+
   const fetchAllUsers = async () => {
     if (!pinAuthenticated) return;
     setIsLoadingUsers(true);
@@ -73,8 +158,21 @@ export default function AdminDashboard() {
         return;
       }
 
-      const processedUsers = profiles?.map(convertProfile) || [];
-      setAllUsersData(processedUsers);
+      // Fetch media for each user
+      const usersWithMedia = await Promise.all(
+        (profiles || []).map(async (profile) => {
+          const { data: media } = await supabase
+            .from('user_media')
+            .select('*')
+            .eq('user_id', profile.citizen_id);
+          return {
+            ...convertProfile(profile),
+            media: media || []
+          };
+        })
+      );
+
+      setAllUsersData(usersWithMedia);
     } catch (error: any) {
       toast.error('Error fetching users: ' + error.message);
     } finally {
@@ -82,10 +180,11 @@ export default function AdminDashboard() {
     }
   };
 
-  // Fetch users when authenticated
+  // Fetch users and media when authenticated
   useEffect(() => {
     if (pinAuthenticated) {
       fetchAllUsers();
+      fetchAllMedia();
     }
   }, [pinAuthenticated]);
 
@@ -340,6 +439,42 @@ export default function AdminDashboard() {
               </Card>
             </div>
 
+            {/* Media Management Section */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="text-2xl">Media Management</CardTitle>
+                <CardDescription>Review and manage user uploaded media</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {userMediaData.map((media) => (
+                    <Card key={media.id} className="overflow-hidden">
+                      <div className="relative aspect-square">
+                        {renderMediaContent(media)}
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-2 right-2"
+                          onClick={() => handleDeleteMedia(media.id, media.file_url)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <CardContent className="p-2">
+                        <p className="font-medium truncate">{media.title || 'Untitled'}</p>
+                        <p className="text-sm text-gray-500">
+                          User: {media.profiles?.citizen_id || 'Unknown'}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {new Date(media.created_at).toLocaleDateString()}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Task Statistics */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <Card className="bg-gradient-to-r from-indigo-400 to-indigo-500 text-white">
@@ -401,6 +536,66 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* User Media */}
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="w-5 h-5" />
+                  User Media Uploads
+                </CardTitle>
+                <CardDescription>
+                  Recent photos and videos from citizens
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {allUsersData.flatMap(user => user.media || []).sort((a, b) => 
+                    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+                  ).slice(0, 6).map((media) => (
+                    <Card key={media.id} className="overflow-hidden">
+                      <div className="relative aspect-video">
+                        {media.file_type.startsWith('image/') ? (
+                          <img
+                            src={media.file_url}
+                            alt={media.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <video
+                            src={media.file_url}
+                            className="w-full h-full object-cover"
+                            controls
+                          />
+                        )}
+                      </div>
+                      <CardContent className="p-3">
+                        <div className="flex justify-between items-start gap-2">
+                          <div>
+                            <h4 className="font-medium text-sm line-clamp-1">{media.title}</h4>
+                            <p className="text-xs text-gray-500">
+                              By: {media.user_id} • {new Date(media.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <Badge>
+                            {media.file_type.startsWith('image/') ? (
+                              <ImageIcon className="w-3 h-3" />
+                            ) : (
+                              <Video className="w-3 h-3" />
+                            )}
+                          </Badge>
+                        </div>
+                        {media.description && (
+                          <p className="text-sm text-gray-600 mt-2 line-clamp-2">
+                            {media.description}
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Recent Activity */}
             <Card className="mb-6">
