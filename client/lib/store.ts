@@ -25,6 +25,7 @@ export interface User {
   badges: Badge[];
   region: string;
   preferredLanguage: string;
+  created_at?: string;
 }
 
 export interface Task {
