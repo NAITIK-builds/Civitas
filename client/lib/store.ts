@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 // Types
 export interface Badge {
@@ -109,6 +109,8 @@ interface CivitasStore {
   getAllUsersWithCurrent: () => User[];
 }
 
+let profileChannel: any = null;
+
 export const useCivitasStore = create<CivitasStore>()(
   persist(
     (set, get) => ({
@@ -119,6 +121,7 @@ export const useCivitasStore = create<CivitasStore>()(
       allUsers: [],
 
       login: async (credentials) => {
+        const supabase = getSupabase();
         try {
           if (!credentials.email && !credentials.citizenId) {
             throw new Error('Either email or citizen ID is required');
@@ -182,6 +185,92 @@ export const useCivitasStore = create<CivitasStore>()(
             preferredLanguage: userProfile.preferred_language
           };
 
+          // Seed default tasks on first login if none exist
+          if (get().tasks.length === 0) {
+            const region = user.region || "All";
+            const now = new Date();
+            const makeId = (n: number) => `${Date.now()}_${n}`;
+            const seeded = [
+              {
+                id: makeId(1),
+                type: "tree_planting" as const,
+                title: "Plant 2 saplings in your area",
+                description: "Plant two native species saplings and stake them. Capture clear before/after photos.",
+                points: 50,
+                deadline: new Date(now.getTime() + 7*24*60*60*1000).toISOString(),
+                location: region,
+                requirements: ["Geotagged photos", "Timestamped within deadline", "Visible saplings"],
+                createdBy: "system",
+                createdAt: now.toISOString(),
+                isActive: true,
+                assignedRegions: [region]
+              },
+              {
+                id: makeId(2),
+                type: "cleanliness_drive" as const,
+                title: "Clean a 50m stretch",
+                description: "Organize or join a cleanliness drive. Submit before/after photos.",
+                points: 35,
+                deadline: new Date(now.getTime() + 5*24*60*60*1000).toISOString(),
+                location: region,
+                requirements: ["Team photo optional", "Trash bags visible", "Area identifiable"],
+                createdBy: "system",
+                createdAt: now.toISOString(),
+                isActive: true,
+                assignedRegions: [region]
+              },
+              {
+                id: makeId(3),
+                type: "pollution_report" as const,
+                title: "Report a pollution hotspot",
+                description: "Identify and document a local pollution source with evidence.",
+                points: 25,
+                deadline: new Date(now.getTime() + 10*24*60*60*1000).toISOString(),
+                location: region,
+                requirements: ["Clear location photo", "Short description", "Coordinates"],
+                createdBy: "system",
+                createdAt: now.toISOString(),
+                isActive: true,
+                assignedRegions: [region]
+              },
+            ];
+            set({ tasks: seeded });
+          }
+
+          // Subscribe to realtime profile updates for live points refresh
+          try {
+            const supabaseRealtime = supabase;
+            if (profileChannel) {
+              await profileChannel.unsubscribe();
+              profileChannel = null;
+            }
+            profileChannel = supabaseRealtime
+              .channel(`profile-updates-${user.citizenId}`)
+              .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `citizen_id=eq.${user.citizenId}` },
+                (payload: any) => {
+                  const updated = payload.new || {};
+                  set((state) => ({
+                    user: state.user && state.user.citizenId === user.citizenId
+                      ? {
+                          ...state.user,
+                          points: updated.points ?? state.user.points,
+                          tasksCompleted: updated.tasks_completed ?? state.user.tasksCompleted,
+                          rank: updated.rank ?? state.user.rank,
+                          successRate: updated.success_rate ?? state.user.successRate,
+                          region: updated.region ?? state.user.region,
+                          preferredLanguage: updated.preferred_language ?? state.user.preferredLanguage,
+                        }
+                      : state.user,
+                  }));
+                }
+              )
+              .subscribe();
+          } catch (e) {
+            console.warn('Realtime subscription setup failed', e);
+          }
+
           set({ user, isAuthenticated: true });
           return true;
         } catch (error) {
@@ -191,8 +280,13 @@ export const useCivitasStore = create<CivitasStore>()(
       },
 
       logout: async () => {
+        const supabase = getSupabase();
         try {
           await supabase.auth.signOut();
+          if (profileChannel) {
+            try { await profileChannel.unsubscribe(); } catch {}
+            profileChannel = null;
+          }
           set({ user: null, isAuthenticated: false });
         } catch (error) {
           console.error('Logout error:', error);
@@ -284,15 +378,19 @@ export const useCivitasStore = create<CivitasStore>()(
 
       updateUser: (citizenId, updates) => {
         let success = false;
-        set(state => ({
-          allUsers: state.allUsers.map(user => {
-            if (user.citizenId === citizenId) {
+        set(state => {
+          const updatedAll = state.allUsers.map(u => {
+            if (u.citizenId === citizenId) {
               success = true;
-              return { ...user, ...updates };
+              return { ...u, ...updates };
             }
-            return user;
-          })
-        }));
+            return u;
+          });
+          const updatedCurrent = state.user?.citizenId === citizenId
+            ? { ...state.user, ...updates }
+            : state.user;
+          return { allUsers: updatedAll, user: updatedCurrent };
+        });
         return success;
       },
 

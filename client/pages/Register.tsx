@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
 import { Shield, CheckCircle, User, Mail, MapPin, Eye, EyeOff, Copy } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 export default function Register() {
@@ -73,6 +73,7 @@ export default function Register() {
       const citizenId = generateCitizenId();
 
       // Register with Supabase
+      const supabase = getSupabase();
       const { data: { user }, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,

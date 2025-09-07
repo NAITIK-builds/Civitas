@@ -249,11 +249,13 @@ class PhotoVerificationService:
             issues.append(f"Photo timestamp {photo_time} is outside task deadline window")
             return False, issues
         
-        # Check if photo was taken recently (within last 24 hours of submission)
+        # Check if photo was taken within 4 hours of submission (as requested)
         time_diff = submission_time - photo_time
-        if time_diff > timedelta(hours=24):
-            issues.append("Photo appears to be older than 24 hours")
+        if time_diff > timedelta(hours=4):
+            issues.append("Photo appears to be older than 4 hours - please take fresh photos")
             return False, issues
+        elif time_diff > timedelta(hours=2):
+            issues.append("Photo is getting old - consider taking a fresh photo")
         
         return True, issues
     
@@ -530,25 +532,37 @@ class PhotoVerificationService:
             return False, issues
     
     def _verify_tree_planting_context(self, image) -> Tuple[bool, List[str]]:
-        """Verify tree planting context"""
+        """Verify tree planting context - enhanced for tree detection"""
         issues = []
         
         # Convert to HSV for better color detection
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
-        # Detect green colors (trees, plants)
+        # Detect green colors (trees, plants) - more specific tree detection
+        # Tree green is typically in this range
         lower_green = np.array([35, 50, 50])
         upper_green = np.array([85, 255, 255])
         green_mask = cv2.inRange(hsv, lower_green, upper_green)
         
-        green_pixels = cv2.countNonZero(green_mask)
+        # Detect darker green (tree trunks, branches)
+        lower_dark_green = np.array([25, 30, 30])
+        upper_dark_green = np.array([35, 255, 255])
+        dark_green_mask = cv2.inRange(hsv, lower_dark_green, upper_dark_green)
+        
+        # Combine green masks
+        combined_green_mask = cv2.bitwise_or(green_mask, dark_green_mask)
+        
+        green_pixels = cv2.countNonZero(combined_green_mask)
         total_pixels = image.shape[0] * image.shape[1]
         green_percentage = (green_pixels / total_pixels) * 100
         
-        if green_percentage < 5:
-            issues.append("Image doesn't contain enough green vegetation for tree planting task")
+        # More lenient threshold for tree detection
+        if green_percentage < 3:
+            issues.append("No trees or vegetation detected in the image")
+        elif green_percentage < 8:
+            issues.append("Very little vegetation detected - ensure trees are clearly visible")
         
-        # Detect brown colors (soil, tools)
+        # Detect brown colors (soil, tools, tree trunks)
         lower_brown = np.array([10, 50, 50])
         upper_brown = np.array([20, 255, 255])
         brown_mask = cv2.inRange(hsv, lower_brown, upper_brown)
@@ -556,8 +570,33 @@ class PhotoVerificationService:
         brown_pixels = cv2.countNonZero(brown_mask)
         brown_percentage = (brown_pixels / total_pixels) * 100
         
-        if brown_percentage < 3:
-            issues.append("Image doesn't contain enough soil/tool colors for tree planting task")
+        # Detect sky (blue) to ensure outdoor photo
+        lower_blue = np.array([100, 50, 50])
+        upper_blue = np.array([130, 255, 255])
+        blue_mask = cv2.inRange(hsv, lower_blue, upper_blue)
+        blue_pixels = cv2.countNonZero(blue_mask)
+        blue_percentage = (blue_pixels / total_pixels) * 100
+        
+        if blue_percentage > 20:
+            issues.append("Image appears to be taken outdoors (good for tree planting)")
+        
+        # Use contour detection to find tree-like shapes
+        contours, _ = cv2.findContours(combined_green_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        tree_like_objects = 0
+        
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 100:  # Minimum area for tree-like object
+                # Check aspect ratio (trees are typically taller than wide)
+                x, y, w, h = cv2.boundingRect(contour)
+                aspect_ratio = h / w if w > 0 else 0
+                if aspect_ratio > 1.2:  # Taller than wide
+                    tree_like_objects += 1
+        
+        if tree_like_objects == 0:
+            issues.append("No tree-like objects detected in the image")
+        elif tree_like_objects < 2:
+            issues.append("Very few tree-like objects detected - ensure trees are clearly visible")
         
         return len(issues) == 0, issues
     

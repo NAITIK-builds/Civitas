@@ -13,7 +13,7 @@ import {
   FileImage, FileVideo, Loader2, CloudUpload,
   Trash2, Eye
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 
 interface MediaUploadProps {
   onUploadComplete?: (mediaUrl: string, mediaType: string) => void;
@@ -152,6 +152,7 @@ export default function MediaUpload({
     if (selectedFiles.length === 0) return;
 
     try {
+      const supabase = getSupabase();
       setUploading(true);
       setUploadProgress(0);
 

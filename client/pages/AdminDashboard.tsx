@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { 
   Shield, Users, Lock, AlertCircle, Plus, Activity, Check, UserPlus, Star, 
@@ -132,6 +132,7 @@ export default function AdminDashboard() {
     if (!pinAuthenticated) return;
     setIsLoadingUsers(true);
     try {
+      const supabase = getSupabase();
       const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
@@ -144,6 +145,7 @@ export default function AdminDashboard() {
 
       const usersWithMedia = await Promise.all(
         (profiles || []).map(async (profile) => {
+          const supabase = getSupabase();
           const { data: media } = await supabase
             .from('user_media')
             .select('*')
@@ -176,6 +178,7 @@ export default function AdminDashboard() {
     if (!pinAuthenticated) return;
     setIsLoadingMedia(true);
     try {
+      const supabase = getSupabase();
       const { data, error } = await supabase
         .from('user_media')
         .select(`
@@ -256,6 +259,7 @@ export default function AdminDashboard() {
   // CRUD Operations
   const handleCreateUser = async () => {
     try {
+      const supabase = getSupabase();
       const { error } = await supabase
         .from('profiles')
         .insert([{
@@ -281,6 +285,7 @@ export default function AdminDashboard() {
 
   const handleUpdateUser = async (user: SupabaseUser) => {
     try {
+      const supabase = getSupabase();
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -304,8 +309,9 @@ export default function AdminDashboard() {
 
   const handleDeleteUsers = async (citizenIds: string[]) => {
     if (!window.confirm(`Are you sure you want to delete ${citizenIds.length} user(s)?`)) return;
-    
+
     try {
+      const supabase = getSupabase();
       if (citizenIds.includes(user?.citizenId || "")) {
         toast.error("Cannot delete the currently logged-in user!");
         return;
@@ -330,6 +336,7 @@ export default function AdminDashboard() {
     if (!window.confirm('Are you sure you want to delete this media?')) return;
 
     try {
+      const supabase = getSupabase();
       const filePath = fileUrl.split('/').slice(-2).join('/');
       const { error: storageError } = await supabase.storage
         .from('media')
@@ -461,8 +468,9 @@ export default function AdminDashboard() {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        <a href="#admin-main" className="sr-only focus:not-sr-only fixed z-[100] top-2 left-2 bg-gov-gold text-gov-navy px-3 py-2 rounded">Skip to content</a>
         <Navigation />
-        <main className="main-content">
+        <main id="admin-main" className="main-content" role="main" aria-label="Admin main content">
                     <div className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
             <Card className="max-w-md mx-auto">
               <CardHeader>
@@ -485,8 +493,9 @@ export default function AdminDashboard() {
   if (!pinAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
+        <a href="#admin-main" className="sr-only focus:not-sr-only fixed z-[100] top-2 left-2 bg-gov-gold text-gov-navy px-3 py-2 rounded">Skip to content</a>
         <Navigation />
-        <main className="main-content">
+        <main id="admin-main" className="main-content" role="main" aria-label="Admin main content">
           <div className="py-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
             <Card className="max-w-md mx-auto">
               <CardHeader>
@@ -537,8 +546,9 @@ export default function AdminDashboard() {
   // Main Admin Dashboard
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-      <Navigation />
-      <main className="main-content">
+      <a href="#admin-main" className="sr-only focus:not-sr-only fixed z-[100] top-2 left-2 bg-gov-gold text-gov-navy px-3 py-2 rounded">Skip to content</a>
+        <Navigation />
+      <main id="admin-main" className="main-content" role="main" aria-label="Admin main content">
         <div className="py-6 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -561,6 +571,10 @@ export default function AdminDashboard() {
               <Button onClick={() => fetchAllUsers()}>
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh Data
+              </Button>
+              <Button onClick={() => navigate('/admin/photos')} className="bg-gov-navy text-white hover:bg-gov-navy/90">
+                <Eye className="w-4 h-4 mr-2" />
+                Review Requests
               </Button>
             </div>
           </div>
@@ -670,6 +684,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center space-x-2 w-full sm:w-auto">
                     <Input
                       placeholder="Search users..."
+                      aria-label="Search users"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="max-w-md"
@@ -705,6 +720,7 @@ export default function AdminDashboard() {
                     <Button
                       variant={sortOrder === 'asc' ? 'default' : 'outline'}
                       size="icon"
+                      aria-label={sortOrder === 'asc' ? 'Sort descending' : 'Sort ascending'}
                       onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                     >
                       {sortOrder === 'asc' ? (
@@ -826,6 +842,7 @@ export default function AdminDashboard() {
                   <CardContent className="p-0">
                     <div className="overflow-x-auto">
                       <table className="min-w-full divide-y divide-gray-200">
+                        <caption className="sr-only">Users table with sortable columns and actions</caption>
                         <thead className="bg-gray-50">
                           <tr>
                             <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -931,6 +948,7 @@ export default function AdminDashboard() {
                                     <Button
                                       variant="outline"
                                       size="sm"
+                                      aria-label={`Edit user ${user.citizenId}`}
                                       onClick={() => setEditingUser(user)}
                                     >
                                       <Edit className="w-4 h-4" />
@@ -938,6 +956,7 @@ export default function AdminDashboard() {
                                     <Button
                                       variant="outline"
                                       size="sm"
+                                      aria-label={`View user ${user.citizenId}`}
                                       onClick={() => navigate(`/profile/${user.citizenId}`)}
                                     >
                                       <Eye className="w-4 h-4" />
@@ -961,6 +980,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center space-x-2 w-full max-w-md">
                     <Input
                       placeholder="Search media..."
+                      aria-label="Search media"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
@@ -1019,6 +1039,7 @@ export default function AdminDashboard() {
                             <Button
                               variant="ghost"
                               size="icon"
+                              aria-label="Delete media"
                               className="text-red-500 hover:text-red-600"
                               onClick={() => handleDeleteMedia(media.id, media.file_url)}
                             >

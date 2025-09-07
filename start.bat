@@ -1,0 +1,3 @@
+@echo off
+echo Starting Civitas...
+run-civitas.bat

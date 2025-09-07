@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { toast } from "sonner";
 import { User, Settings2, Bell, Shield, Key, Globe, UserCircle, Mail } from "lucide-react";
 
@@ -51,6 +51,7 @@ export default function Settings() {
 
     const fetchProfile = async () => {
       try {
+        const supabase = getSupabase();
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -93,6 +94,7 @@ export default function Settings() {
     setIsSaving(true);
 
     try {
+      const supabase = getSupabase();
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -122,6 +124,7 @@ export default function Settings() {
     }
 
     try {
+      const supabase = getSupabase();
       const { error } = await supabase.auth.updateUser({
         password: newPassword
       });

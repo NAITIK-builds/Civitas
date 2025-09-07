@@ -22,6 +22,23 @@ try {
 
 # Start Python Photo Verification Service
 Write-Host "Starting Python Photo Verification Service..." -ForegroundColor Yellow
+
+# Check if virtual environment exists, create if not
+if (-not (Test-Path "server\venv")) {
+    Write-Host "Creating Python virtual environment..." -ForegroundColor Yellow
+    Set-Location server
+    python -m venv venv
+    Set-Location ..
+}
+
+# Install dependencies
+Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
+Set-Location server
+& .\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Set-Location ..
+
+# Start Python service
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd server; .\venv\Scripts\Activate.ps1; python photo_verification_api.py" -WindowStyle Normal
 
 # Wait for Python service to start

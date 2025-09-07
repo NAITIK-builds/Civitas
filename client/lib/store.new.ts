@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from './supabase';
+import { getSupabase } from './supabase';
 
 // Types
 export interface Badge {
@@ -118,6 +118,7 @@ export const useCivitasStore = create<CivitasStore>()(
       allUsers: [],
 
       login: async (credentials) => {
+        const supabase = getSupabase();
         try {
           let email = credentials.email;
 
@@ -178,6 +179,7 @@ export const useCivitasStore = create<CivitasStore>()(
       },
 
       logout: async () => {
+        const supabase = getSupabase();
         try {
           await supabase.auth.signOut();
           set({ user: null, isAuthenticated: false });

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import Navigation from "@/components/Navigation";
 import { useCivitasStore } from "@/lib/store";
 import { Shield, LogIn, User, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { toast } from "sonner";
 
 export default function Login() {
@@ -42,6 +42,7 @@ export default function Login() {
         }
         
         // Get email from profiles table using citizen_id
+        const supabase = getSupabase();
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
           .select('email')
@@ -71,6 +72,7 @@ export default function Login() {
       }
 
       // Attempt to sign in with Supabase
+      const supabase = getSupabase();
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email,
         password: formData.password

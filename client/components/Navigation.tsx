@@ -19,15 +19,19 @@ import {
   X, 
   ChevronDown,
   Bell,
-  Search,
   Shield,
   Home,
   BarChart3,
   Info,
   Building2,
   CreditCard,
-  Globe
-} from "lucide-react";
+  Globe,
+  Users,
+  Plus,
+  LayoutGrid
+  } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useUiPrefs } from "@/lib/uiPrefs";
 
 export default function Navigation() {
   const { user, logout, isAuthenticated } = useCivitasStore();
@@ -35,41 +39,59 @@ export default function Navigation() {
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
-  const searchRef = useRef(null);
+  const [isNavHidden, setIsNavHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  const navRef = useRef<HTMLElement | null>(null);
 
-  // Track scroll position for navbar styling
+
+  // Apply saved UI preferences (language, a11y) on mount
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 10);
-    };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
+    try { useUiPrefs.getState().apply(); } catch {}
   }, []);
 
-  // Close mobile menu on route change
+  // Track scroll position and auto-hide navbar on scroll down
+  useEffect(() => {
+    const handleScroll = () => {
+      const current = window.scrollY || 0;
+      setIsScrolled(current > 10);
+
+      const prev = lastScrollY.current;
+      const scrolledDown = current > prev;
+      const threshold = 80;
+
+      if (!isMobileMenuOpen && current > threshold && scrolledDown) {
+        setIsNavHidden(true);
+      } else {
+        setIsNavHidden(false);
+      }
+
+      lastScrollY.current = current;
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true } as any);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isMobileMenuOpen]);
+
+  // Close mobile menu on route change and reveal nav
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsNavHidden(false);
   }, [location.pathname]);
 
-  // Close mobile menu on outside click
+  // Close mobile menu on outside click (ref-based for reliability)
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isMobileMenuOpen && !event.target.closest('nav')) {
+    const handlePointerDown = (event: Event) => {
+      const target = event.target as Node | null;
+      if (!isMobileMenuOpen || !navRef.current || !target) return;
+      if (!navRef.current.contains(target)) {
         setIsMobileMenuOpen(false);
       }
     };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isMobileMenuOpen]);
 
-  // Focus search input when opened
-  useEffect(() => {
-    if (showSearch && searchRef.current) {
-      searchRef.current.focus();
-    }
-  }, [showSearch]);
+
 
   const handleLogout = () => {
     logout();
@@ -77,23 +99,16 @@ export default function Navigation() {
     setIsMobileMenuOpen(false);
   };
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery)}`);
-      setShowSearch(false);
-      setSearchQuery("");
-    }
-  };
+
 
   const isActive = (path) => location.pathname === path;
 
   const navigationLinks = [
-    { path: '/', label: 'Home', icon: Home },
+    ...(!isAuthenticated ? [{ path: '/', label: 'Home', icon: Home }] : []),
     ...(isAuthenticated ? [{ path: '/dashboard', label: 'Dashboard', icon: BarChart3 }] : []),
     { path: '/leaderboard', label: 'Leaderboard', icon: Award },
+    { path: '/community', label: 'Community', icon: Users },
     { path: '/about', label: 'About', icon: Info },
-    { path: '/admin', label: 'Government Portal', icon: Building2 },
   ];
 
   return (
@@ -111,16 +126,36 @@ export default function Navigation() {
               <span className="hidden sm:inline text-gray-200">Ministry of Electronics & IT</span>
             </div>
             <div className="flex items-center space-x-4 text-xs">
-              <button className="flex items-center space-x-1 hover:text-gov-gold transition-colors">
+              <button
+                onClick={() => {
+                  const { setLanguage, language } = useUiPrefs.getState();
+                  const next = language === 'hi' ? 'en' : 'hi';
+                  setLanguage(next);
+                }}
+                className="flex items-center space-x-1 hover:text-gov-gold transition-colors"
+              >
                 <Globe className="w-3 h-3" />
                 <span>हिंदी</span>
               </button>
               <span className="text-gray-400">|</span>
-              <button className="hover:text-gov-gold transition-colors">
+              <button
+                onClick={() => {
+                  const { toggleHighContrast, toggleLargeFonts, apply } = useUiPrefs.getState();
+                  toggleHighContrast();
+                  toggleLargeFonts();
+                  apply();
+                }}
+                className="hover:text-gov-gold transition-colors"
+              >
                 Accessibility
               </button>
               <span className="text-gray-400">|</span>
-              <button className="hover:text-gov-gold transition-colors">
+              <button
+                onClick={() => {
+                  navigate('/sitemap');
+                }}
+                className="hover:text-gov-gold transition-colors"
+              >
                 Sitemap
               </button>
             </div>
@@ -129,26 +164,28 @@ export default function Navigation() {
       </div>
 
       {/* Enhanced Main Navigation */}
-      <nav className={`bg-white border-b-2 border-gov-navy sticky top-0 z-50 transition-all duration-300 ${
+      <nav ref={navRef} className={`bg-white border-b-2 border-gov-navy sticky top-0 z-50 transition-all duration-300 transform will-change-transform ${
+        isNavHidden ? '-translate-y-full' : 'translate-y-0'
+      } ${
         isScrolled ? 'shadow-lg backdrop-blur-sm bg-white/95' : 'shadow-md'
       }`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16 lg:h-20">
+          <div className={`flex justify-between items-center transition-[height] duration-300 ${isScrolled ? 'h-14 lg:h-16' : 'h-16 lg:h-20'}`}>
             {/* Enhanced Logo & Emblem */}
             <div className="flex items-center space-x-2 lg:space-x-4">
               <div className="flex items-center space-x-2 lg:space-x-3">
                 <div className="relative">
-                  <img 
-                    src="/logo.png" 
-                    alt="Civitas Logo" 
-                    className="w-10 h-10 lg:w-12 lg:h-12 object-contain transition-transform hover:scale-105"
+                  <img
+                    src="/logo.png"
+                    alt="Civitas Logo"
+                    className={`object-contain transition-transform duration-300 ${isScrolled ? 'w-9 h-9 lg:w-10 lg:h-10' : 'w-10 h-10 lg:w-12 lg:h-12'} hover:scale-105`}
                   />
                   <div className="absolute inset-0 rounded-full bg-gov-gold/20 animate-pulse opacity-0 hover:opacity-100 transition-opacity"></div>
                 </div>
                 <div>
-                  <Link 
-                    to="/" 
-                    className="text-xl lg:text-2xl font-bold text-gov-navy hover:text-gov-maroon transition-colors"
+                  <Link
+                    to="/"
+                    className={`font-bold text-gov-navy hover:text-gov-maroon transition-colors ${isScrolled ? 'text-lg lg:text-xl' : 'text-xl lg:text-2xl'}`}
                   >
                     CIVITAS
                   </Link>
@@ -165,10 +202,11 @@ export default function Navigation() {
                 <Link
                   key={path}
                   to={path}
-                  className={`flex items-center space-x-1 px-3 py-2 rounded-lg transition-all duration-200 font-medium ${
+                  aria-current={isActive(path) ? 'page' : undefined}
+                  className={`flex items-center space-x-1 px-3 py-2 rounded-full transition-all duration-200 font-medium ring-1 ring-transparent ${
                     isActive(path)
-                      ? 'bg-gov-navy text-white shadow-md'
-                      : 'text-gov-navy hover:text-gov-maroon hover:bg-gov-navy/5'
+                      ? 'bg-gov-navy text-white shadow-md ring-gov-navy/20'
+                      : 'text-gov-navy hover:text-gov-maroon hover:bg-gov-navy/5 hover:ring-gov-navy/20'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -179,46 +217,7 @@ export default function Navigation() {
 
             {/* Enhanced Desktop Auth Section */}
             <div className="hidden lg:flex items-center space-x-3">
-              {/* Search Button */}
-              <div className="relative">
-                {showSearch ? (
-                  <form onSubmit={handleSearch} className="flex items-center">
-                    <input
-                      ref={searchRef}
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search..."
-                      className="w-48 px-3 py-2 text-sm border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-gov-navy focus:border-transparent"
-                    />
-                    <button
-                      type="submit"
-                      className="px-3 py-2 bg-gov-navy text-white rounded-r-lg hover:bg-gov-navy/90 transition-colors"
-                    >
-                      <Search className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowSearch(false);
-                        setSearchQuery("");
-                      }}
-                      className="ml-2 p-2 text-gray-500 hover:text-gray-700"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </form>
-                ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowSearch(true)}
-                    className="text-gov-navy hover:bg-gov-navy/10"
-                  >
-                    <Search className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
+
 
               {isAuthenticated && user ? (
                 <>
@@ -237,6 +236,16 @@ export default function Navigation() {
                       )}
                     </Button>
                   // </div> */}
+
+                  {/* Admin quick access */}
+                  {user.isAdmin && (
+                    <Link to="/admin">
+                      <Button className="bg-gov-navy text-white hover:bg-gov-navy/90">
+                        <Shield className="w-4 h-4 mr-2" />
+                        Admin
+                      </Button>
+                    </Link>
+                  )}
 
                   {/* Enhanced User Stats Display */}
                   <div className="hidden xl:flex items-center space-x-3 bg-gradient-to-r from-gov-navy/5 to-gov-gold/10 px-4 py-2 rounded-lg border border-gov-navy/20">
@@ -282,6 +291,18 @@ export default function Navigation() {
                         <Link to="/dashboard" className="flex items-center cursor-pointer">
                           <BarChart3 className="w-4 h-4 mr-3" />
                           Dashboard
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/new-post" className="flex items-center cursor-pointer">
+                          <Plus className="w-4 h-4 mr-3" />
+                          New Post
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/my-posts" className="flex items-center cursor-pointer">
+                          <LayoutGrid className="w-4 h-4 mr-3" />
+                          My Posts
                         </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem asChild>
@@ -340,9 +361,10 @@ export default function Navigation() {
             {/* Enhanced Mobile Menu Button */}
             <div className="lg:hidden">
               <button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen((v) => !v); }}
                 className="text-gov-navy p-2 rounded-lg hover:bg-gov-navy/10 transition-colors"
                 aria-label="Toggle mobile menu"
+                aria-expanded={isMobileMenuOpen}
               >
                 {isMobileMenuOpen ? (
                   <X className="w-6 h-6" />
@@ -355,122 +377,135 @@ export default function Navigation() {
         </div>
 
         {/* Enhanced Mobile Menu */}
-        <div className={`lg:hidden transition-all duration-300 ease-in-out ${
-          isMobileMenuOpen 
-            ? 'max-h-screen opacity-100 border-t border-gray-200' 
-            : 'max-h-0 opacity-0 overflow-hidden'
-        }`}>
-          <div className="bg-white px-4 py-4 space-y-3">
-            {/* Mobile Search */}
-            <form onSubmit={handleSearch} className="flex space-x-2 mb-4">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gov-navy focus:border-transparent"
-              />
-              <button
-                type="submit"
-                className="px-4 py-2 bg-gov-navy text-white rounded-lg hover:bg-gov-navy/90 transition-colors"
-              >
-                <Search className="w-4 h-4" />
-              </button>
-            </form>
+        <AnimatePresence initial={false}>
+          {isMobileMenuOpen && (
+            <motion.div
+              className="lg:hidden border-t border-gray-200 overflow-hidden"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: 'easeInOut' }}
+            >
+              <div className="bg-white px-4 py-4 space-y-3">
 
-            {/* Enhanced User Info on Mobile */}
-            {isAuthenticated && user && (
-              <div className="bg-gradient-to-r from-gov-navy/5 to-gov-gold/10 rounded-xl p-4 mb-4 border border-gov-navy/20">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-mono text-gov-navy font-bold">
-                      {user.citizenId}
-                    </div>
-                    <div className="text-xs text-gray-600 flex items-center space-x-2 mt-1">
-                      <span>{user.points} points</span>
-                      <span>•</span>
-                      <span className="text-gov-maroon font-medium">Level {Math.floor(user.points / 100) + 1}</span>
+                {/* Enhanced User Info on Mobile */}
+                {isAuthenticated && user && (
+                  <div className="bg-gradient-to-r from-gov-navy/5 to-gov-gold/10 rounded-xl p-4 mb-4 border border-gov-navy/20">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-mono text-gov-navy font-bold">
+                          {user.citizenId}
+                        </div>
+                        <div className="text-xs text-gray-600 flex items-center space-x-2 mt-1">
+                          <span>{user.points} points</span>
+                          <span>•</span>
+                          <span className="text-gov-maroon font-medium">Level {Math.floor(user.points / 100) + 1}</span>
+                        </div>
+                      </div>
+                      <Badge className="bg-gradient-to-r from-gov-gold to-yellow-400 text-gov-navy shadow-sm">
+                        <Award className="w-3 h-3 mr-1" />
+                        #{user.rank}
+                      </Badge>
                     </div>
                   </div>
-                  <Badge className="bg-gradient-to-r from-gov-gold to-yellow-400 text-gov-navy shadow-sm">
-                    <Award className="w-3 h-3 mr-1" />
-                    #{user.rank}
-                  </Badge>
+                )}
+
+                {/* Enhanced Mobile Navigation Links */}
+                <div className="space-y-1">
+                  {navigationLinks.map(({ path, label, icon: Icon }) => (
+                    <Link
+                      key={path}
+                      to={path}
+                      aria-current={isActive(path) ? 'page' : undefined}
+                      className={`flex items-center space-x-3 py-3 px-4 rounded-full transition-all duration-200 ring-1 ring-transparent ${
+                        isActive(path)
+                          ? 'bg-gov-navy text-white shadow-md ring-gov-navy/20'
+                          : 'text-gov-navy hover:bg-gov-navy/5 hover:ring-gov-navy/20'
+                      }`}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      <Icon className="w-5 h-5" />
+                      <span className="font-medium">{label}</span>
+                    </Link>
+                  ))}
+
+                  {/* Additional mobile-only links */}
+                  {isAuthenticated && (
+                    <>
+                      {user?.isAdmin && (
+                        <Link
+                          to="/admin"
+                          className="flex items-center space-x-3 py-3 px-4 text-gov-navy hover:bg-gov-navy/5 rounded-lg transition-colors font-medium"
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          <Shield className="w-5 h-5" />
+                          <span>Admin Dashboard</span>
+                        </Link>
+                      )}
+
+                      <Link
+                        to="/new-post"
+                        className="flex items-center space-x-3 py-3 px-4 text-gov-navy hover:bg-gov-navy/5 rounded-lg transition-colors font-medium"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <Plus className="w-5 h-5" />
+                        <span>New Post</span>
+                      </Link>
+                      <Link
+                        to="/my-posts"
+                        className="flex items-center space-x-3 py-3 px-4 text-gov-navy hover:bg-gov-navy/5 rounded-lg transition-colors font-medium"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <LayoutGrid className="w-5 h-5" />
+                        <span>My Posts</span>
+                      </Link>
+                      <Link
+                        to="/id-card"
+                        className="flex items-center space-x-3 py-3 px-4 text-gov-maroon hover:bg-gov-maroon/5 rounded-lg transition-colors font-medium"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                      >
+                        <CreditCard className="w-5 h-5" />
+                        <span>My ID Card</span>
+                      </Link>
+                    </>
+                  )}
                 </div>
-                {/* Notifications indicator on mobile
-                {notifications?.length > 0 && (
-                  <div className="mt-2 text-xs text-gov-maroon flex items-center">
-                    <Bell className="w-3 h-3 mr-1" />
-                    {notifications.length} new notification{notifications.length !== 1 ? 's' : ''}
+
+                {/* Enhanced Mobile Auth Buttons */}
+                {isAuthenticated && user ? (
+                  <div className="pt-4 border-t border-gray-200 space-y-2">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center space-x-3 py-3 px-4 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      <span>Logout</span>
+                    </button>
                   </div>
-                )} */}
+                ) : (
+                  <div className="pt-4 border-t border-gray-200 space-y-3">
+                    <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button
+                        variant="outline"
+                        className="w-full border-gov-navy text-gov-navy hover:bg-gov-navy hover:text-white transition-all duration-200"
+                      >
+                        <User className="w-4 h-4 mr-2" />
+                        Citizen Login
+                      </Button>
+                    </Link>
+                    <Link to="/register" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Button
+                        className="w-full bg-gradient-to-r from-gov-maroon to-red-700 hover:from-gov-maroon/90 hover:to-red-700/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
+                      >
+                        Register Now
+                      </Button>
+                    </Link>
+                  </div>
+                )}
               </div>
-            )}
-
-            {/* Enhanced Mobile Navigation Links */}
-            <div className="space-y-1">
-              {navigationLinks.map(({ path, label, icon: Icon }) => (
-                <Link
-                  key={path}
-                  to={path}
-                  className={`flex items-center space-x-3 py-3 px-4 rounded-lg transition-all duration-200 ${
-                    isActive(path)
-                      ? 'bg-gov-navy text-white shadow-md'
-                      : 'text-gov-navy hover:bg-gov-navy/5'
-                  }`}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{label}</span>
-                </Link>
-              ))}
-
-              {/* Additional mobile-only links */}
-              {isAuthenticated && (
-                <Link
-                  to="/id-card"
-                  className="flex items-center space-x-3 py-3 px-4 text-gov-maroon hover:bg-gov-maroon/5 rounded-lg transition-colors font-medium"
-                  onClick={() => setIsMobileMenuOpen(false)}
-                >
-                  <CreditCard className="w-5 h-5" />
-                  <span>My ID Card</span>
-                </Link>
-              )}
-            </div>
-
-            {/* Enhanced Mobile Auth Buttons */}
-            {isAuthenticated && user ? (
-              <div className="pt-4 border-t border-gray-200 space-y-2">
-                <button
-                  onClick={handleLogout}
-                  className="w-full flex items-center space-x-3 py-3 px-4 text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span>Logout</span>
-                </button>
-              </div>
-            ) : (
-              <div className="pt-4 border-t border-gray-200 space-y-3">
-                <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Button
-                    variant="outline"
-                    className="w-full border-gov-navy text-gov-navy hover:bg-gov-navy hover:text-white transition-all duration-200"
-                  >
-                    <User className="w-4 h-4 mr-2" />
-                    Citizen Login
-                  </Button>
-                </Link>
-                <Link to="/register" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Button
-                    className="w-full bg-gradient-to-r from-gov-maroon to-red-700 hover:from-gov-maroon/90 hover:to-red-700/90 text-white shadow-md hover:shadow-lg transition-all duration-200"
-                  >
-                    Register Now
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
     </>
   );
